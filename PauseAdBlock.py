@@ -1,12 +1,12 @@
-import requests, time, logging, threading
+import requests, time, logging, threading, os
 import RPi.GPIO as gpio
 
 logging.basicConfig(filename='/root/scripts/piButton.log', format='%(levelname)s:%(asctime)s:%(message)s', encoding='utf-8', level=logging.DEBUG)
 
 # On button press, pause PiHole DNS blocking for X number of minutes
 
-piHoleIP = "192.168.100.151"
-#pinChannel = 26 # GPIO26 == PIN 37
+# Look up WLAN 0 IP address and set it
+piHoleIP = os.popen('ip addr show wlan0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
 ledPinChannel = 31 #GPIO6 == PIN 31 https://i.pinimg.com/736x/c6/a9/39/c6a939f2c365e141abb18947752dbe8b.jpg
 pinBoard= 37 # setmode(gpio.BOARD) Board 37 -> GPIO26
 pauseTime = 120 # Two minutes
@@ -54,9 +54,9 @@ gpio.setup(pinBoard, gpio.IN, pull_up_down=gpio.PUD_DOWN)
 gpio.setup(ledPinChannel, gpio.OUT)
 
 # listen for button press events
-# Appears that subsequent button presses are 'queued' for after the function returns
-gpio.add_event_detect(pinBoard, gpio.RISING, callback=pause_AdBlocking) # Setup event on pin rising edge
-
+# Appears that subsequent button presses are 'queued' for after the function returns. 
+buttonThread = threading.Thread(target=gpio.add_event_detect(pinBoard, gpio.RISING, callback=pause_AdBlocking)) # Setup event on pin rising edge
+buttonThread.run()
 
 try:
     while True:
@@ -64,7 +64,11 @@ try:
         pass
 
 except KeyboardInterrupt:
-    print("key interrupt") #do something here
+    gpio.cleanup()
+    stoppedMsg = "Button press program was manually stopped"
+    logging.warning(stoppedMsg)
+    print(stoppedMsg)
 
 finally:
     gpio.cleanup()
+    logging.error("Button press program has closed")
